@@ -21,7 +21,7 @@ model = genai.GenerativeModel("gemini-2.5-flash")
 # ----------------------------------
 # MONGODB CONFIG
 # ----------------------------------
-client = MongoClient(st.secrets["MONGO_URI"])
+client = MongoClient(st.secrets["MONGO_URI"], serverSelectionTimeoutMS=5000)
 db = client["ai_study_buddy"]
 chats_collection = db["chats"]
 users_collection = db["users"]
@@ -69,24 +69,30 @@ if not st.session_state.logged_in:
         password = st.text_input("Password", type="password", key="login_pass")
 
         if st.button("Login"):
-            user = login_user(email, password)
-            if user:
-                st.session_state.logged_in = True
-                st.session_state.user_email = email
-                st.success("Login successful ✅")
-                st.rerun()
+            if not email or not password:
+                st.warning("Please enter email and password")
             else:
-                st.error("Invalid email or password ❌")
+                user = login_user(email, password)
+                if user:
+                    st.session_state.logged_in = True
+                    st.session_state.user_email = email
+                    st.success("Login successful ✅")
+                    st.rerun()
+                else:
+                    st.error("Invalid email or password ❌")
 
     with tab2:
         new_email = st.text_input("Email", key="signup_email")
         new_password = st.text_input("Password", type="password", key="signup_pass")
 
         if st.button("Sign Up"):
-            if signup_user(new_email, new_password):
-                st.success("Account created! Please login.")
+            if not new_email or not new_password:
+                st.warning("Please fill all fields")
             else:
-                st.error("User already exists")
+                if signup_user(new_email, new_password):
+                    st.success("Account created! Please login.")
+                else:
+                    st.error("User already exists")
 
     st.stop()
 
@@ -106,14 +112,18 @@ with st.sidebar:
             "created_at": datetime.now()
         })
         st.session_state.current_chat_id = chat_id
+        st.rerun()
 
     st.markdown("---")
 
-    for chat in chats_collection.find(
+    chats = list(chats_collection.find(
         {"user": st.session_state.user_email}
-    ).sort("created_at", -1):
+    ).sort("created_at", -1))
+
+    for chat in chats:
         if st.button(chat["title"], key=chat["_id"]):
             st.session_state.current_chat_id = chat["_id"]
+            st.rerun()
 
     st.markdown("---")
     if st.button("🚪 Logout"):
@@ -155,13 +165,6 @@ if st.button("Generate"):
         else:
             chat_id = st.session_state.current_chat_id
 
-        chat = chats_collection.find_one({"_id": chat_id})
-        if chat["title"] == "New Chat":
-            chats_collection.update_one(
-                {"_id": chat_id},
-                {"$set": {"title": topic.title()}}
-            )
-
         chats_collection.update_one(
             {"_id": chat_id},
             {"$push": {"messages": {"role": "user", "content": topic}}}
@@ -181,6 +184,7 @@ if st.button("Generate"):
         )
 
         st.success("Response generated!")
+        st.rerun()
 
 # ----------------------------------
 # SHOW CONVERSATION
